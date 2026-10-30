@@ -118,7 +118,6 @@ function renderBooks() {
   const grid = $("booksGrid");
   if (!grid) return;
 
-  // Prevent errors if the API does not return a books array.
   const bookList = Array.isArray(books) ? books : [];
 
   const query = $("searchInput").value.trim().toLowerCase();
@@ -138,24 +137,29 @@ function renderBooks() {
           <div class="cover ${["", "c2", "c3", "c4"][i % 4]}">
             ${escapeHtml(initials(book.title))}
           </div>
+
           <div class="book-info">
             <h3>${escapeHtml(book.title)}</h3>
+
             <div class="author">
               by ${escapeHtml(book.author)}
             </div>
+
             <span class="genre">
               ${escapeHtml(book.genre)}
             </span>
+
             <div class="card-bottom">
               <span>
                 ${Number(book.review_count) || 0}
                 review${Number(book.review_count) === 1 ? "" : "s"}
               </span>
+
               <button
                 class="small-link"
-                data-review-book="${escapeHtml(book.id)}"
+                data-view-book="${escapeHtml(book.id)}"
               >
-                Review ↗
+                View Reviews ↗
               </button>
             </div>
           </div>
@@ -168,9 +172,9 @@ function renderBooks() {
         </div>
       `;
 
-  document.querySelectorAll("[data-review-book]").forEach((button) => {
+  document.querySelectorAll("[data-view-book]").forEach((button) => {
     button.addEventListener("click", () => {
-      startReview(button.dataset.reviewBook);
+      viewBookReviews(button.dataset.viewBook);
     });
   });
 }
@@ -211,6 +215,7 @@ function renderReviews() {
             <span>
               ${escapeHtml(review.reviewer_name || "Community reader")}
             </span>
+
             <span>
               ${review.created_at
                 ? new Date(review.created_at).toLocaleDateString()
@@ -259,17 +264,190 @@ function renderReviews() {
   });
 }
 
+// View reviews for a particular book
+function viewBookReviews(bookId) {
+  const bookList = Array.isArray(books) ? books : [];
+
+  const book = bookList.find(
+    (item) => String(item.id) === String(bookId)
+  );
+
+  if (!book) {
+    toast("Book details could not be found. Please refresh the page.");
+    return;
+  }
+
+  const matchingReviews = (Array.isArray(allReviews) ? allReviews : [])
+    .filter((review) => String(review.book_id) === String(book.id));
+
+  const averageRating = matchingReviews.length
+    ? matchingReviews.reduce(
+        (total, review) => total + (Number(review.rating) || 0),
+        0
+      ) / matchingReviews.length
+    : 0;
+
+  const reviewCards = matchingReviews.length
+    ? matchingReviews.map((review) => `
+        <article style="border-top:1px solid #e5e7eb;padding:14px 0;">
+          <div style="color:#d69e16;font-size:18px;letter-spacing:2px;">
+            ${stars(review.rating)}
+          </div>
+
+          <p style="margin:8px 0;line-height:1.6;white-space:pre-wrap;">
+            ${escapeHtml(review.body || "")}
+          </p>
+
+          <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;color:#6b7280;font-size:13px;">
+            <span>
+              ${escapeHtml(review.reviewer_name || "Community reader")}
+            </span>
+
+            <span>
+              ${review.created_at
+                ? escapeHtml(new Date(review.created_at).toLocaleDateString())
+                : ""}
+            </span>
+          </div>
+        </article>
+      `).join("")
+    : `
+        <p style="color:#6b7280;padding:16px 0;">
+          No reviews for this book yet. Be the first to share your thoughts!
+        </p>
+      `;
+
+  // Create the details popup dynamically
+  const previousModal = $("bookDetailsModal");
+
+  if (previousModal) {
+    previousModal.remove();
+  }
+
+  const modal = document.createElement("div");
+
+  modal.id = "bookDetailsModal";
+  modal.className = "modal-backdrop";
+
+  modal.style.cssText =
+    "position:fixed;inset:0;z-index:9999;display:flex;" +
+    "align-items:center;justify-content:center;padding:18px;" +
+    "background:rgba(15,23,42,.65);";
+
+  modal.innerHTML = `
+    <section
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="bookDetailsTitle"
+      style="position:relative;width:min(620px,100%);max-height:85vh;overflow:auto;background:#fff;color:#1f2937;border-radius:14px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.25);"
+    >
+
+      <button
+        type="button"
+        data-details-close
+        aria-label="Close"
+        style="position:absolute;top:12px;right:14px;border:0;background:transparent;font-size:26px;cursor:pointer;color:#4b5563;"
+      >
+        ×
+      </button>
+
+      <div style="padding-right:30px;">
+
+        <p style="margin:0 0 6px;color:#64748b;font-size:13px;text-transform:uppercase;letter-spacing:1px;">
+          Book details
+        </p>
+
+        <h2
+          id="bookDetailsTitle"
+          style="margin:0 0 6px;font-size:24px;"
+        >
+          ${escapeHtml(book.title)}
+        </h2>
+
+        <p style="margin:0;color:#64748b;">
+          by ${escapeHtml(book.author)}
+        </p>
+
+        <p style="margin:8px 0 14px;color:#64748b;font-size:14px;">
+          ${escapeHtml(book.genre || "Other")}
+        </p>
+
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;">
+
+          <span style="color:#d69e16;font-size:20px;">
+            ${stars(Math.round(averageRating))}
+          </span>
+
+          <span style="font-size:14px;color:#64748b;">
+            ${matchingReviews.length
+              ? averageRating.toFixed(1) + " / 5 · "
+              : ""}
+            ${matchingReviews.length}
+            ${matchingReviews.length === 1 ? "review" : "reviews"}
+          </span>
+
+        </div>
+      </div>
+
+      <h3 style="margin:12px 0 4px;font-size:18px;">
+        Reader reviews
+      </h3>
+
+      <div>
+        ${reviewCards}
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-top:16px;">
+
+        <button
+          type="button"
+          data-details-write
+          style="border:0;border-radius:8px;padding:11px 18px;background:#1e3a8a;color:#fff;font-weight:600;cursor:pointer;"
+        >
+          Write a Review
+        </button>
+
+      </div>
+    </section>
+  `;
+
+  document.body.appendChild(modal);
+
+  const closeModal = () => modal.remove();
+
+  modal.querySelector("[data-details-close]")
+    .addEventListener("click", closeModal);
+
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) {
+      closeModal();
+    }
+  });
+
+  modal.querySelector("[data-details-write]")
+    .addEventListener("click", () => {
+      closeModal();
+      startReview(book.id);
+    });
+}
+
 async function loadData() {
   let connected = true;
 
-  // Load books separately so a reviews error does not break the book list.
+  // Load books separately
   try {
     const result = await api("/books");
-    books = Array.isArray(result.books) ? result.books : [];
+
+    books = Array.isArray(result.books)
+      ? result.books
+      : [];
+
     renderBooks();
+
   } catch (error) {
     connected = false;
     books = [];
+
     renderBooks();
 
     $("booksGrid").innerHTML = `
@@ -279,10 +457,16 @@ async function loadData() {
     `;
   }
 
+  // Load reviews
   try {
     const result = await api("/reviews");
-    allReviews = Array.isArray(result.reviews) ? result.reviews : [];
+
+    allReviews = Array.isArray(result.reviews)
+      ? result.reviews
+      : [];
+
     renderReviews();
+
   } catch (error) {
     connected = false;
     allReviews = [];
@@ -295,6 +479,7 @@ async function loadData() {
   }
 
   const status = $("apiStatus");
+
   if (status) {
     status.textContent = connected
       ? "Database API connected"
@@ -312,10 +497,11 @@ async function refreshUser() {
   try {
     const result = await api("/auth/me");
     currentUser = result.user || null;
+
   } catch (error) {
-    // Clear an expired or invalid saved session.
     token = "";
     currentUser = null;
+
     localStorage.removeItem("booknest_token");
   }
 
@@ -325,7 +511,9 @@ async function refreshUser() {
 
 function updateAuthMode() {
   $("authTitle").textContent =
-    authMode === "login" ? "Welcome back" : "Create your account";
+    authMode === "login"
+      ? "Welcome back"
+      : "Create your account";
 
   $("authHint").textContent =
     authMode === "login"
@@ -333,16 +521,24 @@ function updateAuthMode() {
       : "Join readers sharing thoughtful recommendations.";
 
   $("authSubmit").textContent =
-    authMode === "login" ? "Log in" : "Create account";
+    authMode === "login"
+      ? "Log in"
+      : "Create account";
 
   $("switchText").textContent =
-    authMode === "login" ? "New here?" : "Already have an account?";
+    authMode === "login"
+      ? "New here?"
+      : "Already have an account?";
 
   $("switchAuth").textContent =
-    authMode === "login" ? "Create an account" : "Log in";
+    authMode === "login"
+      ? "Create an account"
+      : "Log in";
 
   $("authPassword").autocomplete =
-    authMode === "login" ? "current-password" : "new-password";
+    authMode === "login"
+      ? "current-password"
+      : "new-password";
 
   $("authMessage").textContent = "";
 }
@@ -351,29 +547,33 @@ async function logout() {
   try {
     await api("/auth/logout", { method: "POST" });
   } catch {
-    // Clear the local session even if the logout request fails.
+    // Clear the local session even if logout fails.
   }
 
   token = "";
   currentUser = null;
+
   localStorage.removeItem("booknest_token");
 
   renderAccount();
   renderReviews();
+
   toast("You have logged out.");
 }
 
+// Open the existing review form
 function startReview(bookId) {
   if (!currentUser) {
     authMode = "login";
     updateAuthMode();
     showModal("authModal");
+
     toast("Log in first to publish a review.");
     return;
   }
 
-  // Never call .find() on an undefined value.
   const bookList = Array.isArray(books) ? books : [];
+
   const book = bookList.find(
     (item) => String(item.id) === String(bookId)
   );
@@ -381,6 +581,7 @@ function startReview(bookId) {
   $("bookTitle").value = book?.title || "";
   $("bookAuthor").value = book?.author || "";
   $("bookGenre").value = book?.genre || "Fiction";
+
   $("reviewBody").value = "";
   $("reviewMessage").textContent = "";
 
@@ -400,7 +601,9 @@ document.querySelectorAll("[data-close]").forEach((button) => {
 
 document.querySelectorAll(".modal-backdrop").forEach((backdrop) => {
   backdrop.addEventListener("click", (event) => {
-    if (event.target === backdrop) hideModal(backdrop.id);
+    if (event.target === backdrop) {
+      hideModal(backdrop.id);
+    }
   });
 });
 
@@ -419,16 +622,19 @@ $("writeReview").addEventListener("click", () => {
   startReview("");
 });
 
+// Login and signup
 $("authForm").addEventListener("submit", async (event) => {
   event.preventDefault();
 
   const message = $("authMessage");
+
   message.textContent = "Please wait…";
   $("authSubmit").disabled = true;
 
   try {
     const result = await api(`/auth/${authMode}`, {
       method: "POST",
+
       body: JSON.stringify({
         email: $("authEmail").value.trim(),
         password: $("authPassword").value,
@@ -437,6 +643,7 @@ $("authForm").addEventListener("submit", async (event) => {
 
     if (result.session?.access_token) {
       token = result.session.access_token;
+
       localStorage.setItem("booknest_token", token);
     }
 
@@ -444,6 +651,7 @@ $("authForm").addEventListener("submit", async (event) => {
       message.textContent =
         "Account created. If email confirmation is enabled in Supabase, " +
         "verify your email, then log in.";
+
       return;
     }
 
@@ -452,22 +660,29 @@ $("authForm").addEventListener("submit", async (event) => {
     if (!currentUser) {
       message.textContent =
         "Login could not be verified. Please try logging in again.";
+
       return;
     }
 
     hideModal("authModal");
-    toast(authMode === "login"
-      ? "Welcome back!"
-      : "Account created successfully!");
+
+    toast(
+      authMode === "login"
+        ? "Welcome back!"
+        : "Account created successfully!"
+    );
 
     await loadData();
+
   } catch (error) {
     message.textContent = error.message;
+
   } finally {
     $("authSubmit").disabled = false;
   }
 });
 
+// Publish a review
 $("reviewForm").addEventListener("submit", async (event) => {
   event.preventDefault();
 
@@ -477,6 +692,7 @@ $("reviewForm").addEventListener("submit", async (event) => {
   try {
     await api("/reviews", {
       method: "POST",
+
       body: JSON.stringify({
         title: $("bookTitle").value.trim(),
         author: $("bookAuthor").value.trim(),
@@ -487,28 +703,36 @@ $("reviewForm").addEventListener("submit", async (event) => {
     });
 
     hideModal("reviewModal");
+
     toast("Your review has been published.");
+
     await loadData();
+
   } catch (error) {
     message.textContent = error.message;
 
     if (error.status === 401) {
       token = "";
       currentUser = null;
+
       localStorage.removeItem("booknest_token");
 
       renderAccount();
       renderReviews();
 
       hideModal("reviewModal");
+
       authMode = "login";
       updateAuthMode();
+
       showModal("authModal");
+
       toast("Your session expired. Please log in again.");
     }
   }
 });
 
+// Start the application
 (async () => {
   try {
     await api("/health");
